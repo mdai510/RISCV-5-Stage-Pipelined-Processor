@@ -1,0 +1,91 @@
+`default_nettype none
+
+//MEM/WB pipeline register module
+module reg_mem_wb (
+    input wire i_clk, i_rst,
+    input wire mem_valid,
+    input wire [31:0] mem_pc,
+    input wire [31:0] mem_inst,
+    input wire [31:0] mem_next_pc,
+    input wire [1:0] mem_rd_wsel,
+    input wire mem_rf_wen,
+    input wire mem_halt,
+    input wire mem_trap,
+    input wire [31:0] mem_alu_result,
+    input wire [31:0] mem_load_data,
+    input wire [31:0] mem_rs1_rdata,
+    input wire [31:0] mem_rs2_rdata,
+
+    input wire [31:0] mem_dmem_addr,
+    input wire [ 3:0] mem_dmem_mask,
+    input wire        mem_dmem_ren,
+    input wire        mem_dmem_wen,
+    input wire [31:0] mem_dmem_rdata,
+    input wire [31:0] mem_dmem_wdata,
+
+    output reg wb_valid,
+    output reg [31:0] wb_pc,
+    output reg [31:0] wb_inst,
+    output reg [31:0] wb_next_pc,
+    output reg [1:0]  wb_rd_wsel,
+    output reg wb_rf_wen,
+    output reg wb_halt,
+    output reg wb_trap,
+    output reg [31:0] wb_alu_result,
+    output reg [31:0] wb_load_data,
+    output reg [31:0] wb_rs1_rdata,
+    output reg [31:0] wb_rs2_rdata,
+
+    output reg [31:0] wb_dmem_addr,
+    output reg [ 3:0] wb_dmem_mask,
+    output reg        wb_dmem_ren,
+    output reg        wb_dmem_wen,
+    output reg [31:0] wb_dmem_rdata,
+    output reg [31:0] wb_dmem_wdata
+);
+
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            wb_valid <= 0;
+            wb_pc <= 0;
+            wb_inst <= 0;
+            wb_next_pc <= 0;
+            wb_rd_wsel <= 0;
+            wb_rf_wen <= 0;
+            wb_halt <= 0;
+            wb_trap <= 0;
+            wb_alu_result <= 0;
+            wb_load_data <= 0;
+            wb_rs1_rdata <= 0;
+            wb_rs2_rdata <= 0;
+            wb_dmem_addr <= 0;
+            wb_dmem_mask <= 0;
+            wb_dmem_ren <= 0;
+            wb_dmem_wen <= 0;
+            wb_dmem_rdata <= 0;
+            wb_dmem_wdata <= 0;
+        end else begin
+            wb_valid <= mem_valid;
+            wb_pc <= mem_pc;
+            wb_inst <= mem_inst;
+            wb_next_pc <= mem_next_pc;
+            wb_rd_wsel <= mem_rd_wsel;
+            wb_rf_wen <= mem_rf_wen;
+            wb_halt <= mem_halt;
+            wb_trap <= mem_trap;
+            wb_alu_result <= mem_alu_result;
+            wb_load_data <= mem_load_data;
+            wb_rs1_rdata <= mem_rs1_rdata;
+            wb_rs2_rdata <= mem_rs2_rdata;
+            wb_dmem_addr <= mem_dmem_addr;
+            wb_dmem_mask <= mem_dmem_mask;
+            wb_dmem_ren <= mem_dmem_ren;
+            wb_dmem_wen <= mem_dmem_wen;
+            wb_dmem_rdata <= mem_dmem_rdata;
+            wb_dmem_wdata <= mem_dmem_wdata;
+        end
+    end
+
+endmodule
+
+`default_nettype wire
