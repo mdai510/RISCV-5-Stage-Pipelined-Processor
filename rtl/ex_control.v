@@ -19,6 +19,7 @@ module ex_control (
     input wire i_jalr,
 
     output wire [1:0] o_pc_sel,
+    output wire o_flush,
     output wire o_trap
 );
     wire data_misaligned;
@@ -41,11 +42,13 @@ module ex_control (
     //branches are split into BEQ, BLT, BLTU, and their inverses (BNE, BGE, BGEU)
     //the unsigned comparison decision for the ALU is already determined by o_alu_unsigned
     //therefore the comparison can be chosen simply from funct3[2](0 = equality, 1 = less than), and funct3[0] to invert
-    
     assign o_pc_sel = (!i_valid || o_trap) ? 2'b00 :
-                       i_jalr ? 2'b10 :   // JALR instruction
-                       (i_jal | branch_cond_met) ? 2'b01 :  //PC+imm
-                       2'b00;  //PC+4 for all other cases
+                i_jalr ? 2'b10 :
+                (i_jal || branch_cond_met) ? 2'b01 :
+                2'b00;
+
+    assign o_flush = i_valid && !o_trap && (i_jalr || i_jal || branch_cond_met);
+    
 endmodule
 
 `default_nettype wire

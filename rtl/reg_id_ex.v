@@ -30,6 +30,7 @@ module reg_id_ex (
     input wire [31:0] id_rs2_rdata,
 
     input wire i_stall,
+    input wire i_flush,
 
     output reg ex_valid,
     output reg [31:0] ex_inst,
@@ -57,7 +58,7 @@ module reg_id_ex (
     output reg [31:0] ex_rs2_rdata
 );
     always @(posedge i_clk) begin
-        if(i_rst) begin
+        if(i_rst || i_flush) begin
             ex_valid <= 1'b0;
             ex_inst <= 32'b0;
             ex_pc <= 32'b0;
@@ -79,7 +80,7 @@ module reg_id_ex (
             ex_immediate <= 32'b0;
             ex_rs1_rdata <= 32'b0;
             ex_rs2_rdata <= 32'b0;
-        end else if(i_stall) begin      //hold while id waits for operands
+        end else if(i_stall) begin      //load use bubble
             ex_valid <= 1'b0;
             ex_inst <= 32'h13; // addi x0, x0, 0
             ex_pc <= 32'b0;

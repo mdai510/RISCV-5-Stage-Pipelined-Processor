@@ -1,28 +1,26 @@
 `default_nettype none
 
 //Hazard Detection Unit
-//Detects RAW data hazards between the ID stage and the EX/MEM stages 
-//(we have register file bypassing enabled, so hazards in the WB stage are handled by bypassing)
+//With forwarding, only load-use hazards need to be stalled
 module hazard_detect (
+    input wire i_id_valid,
     input wire [31:0] i_id_inst,
 
-    input wire i_ex_rf_wen,
+    input wire i_ex_valid,
     input wire [31:0] i_ex_inst,
 
-    input wire i_mem_rf_wen,
-    input wire [31:0] i_mem_inst,
-
-    output wire o_hazard
+    output wire o_load_use_stall
 );
 
     wire [4:0] id_rs1;
     wire [4:0] id_rs2;
     wire [4:0] ex_rd;
-    wire [4:0] mem_rd;
 
     wire [6:0] id_opcode;
     wire id_uses_rs1;
     wire id_uses_rs2;
+
+    wire ex_is_load;
 
     assign id_opcode = i_id_inst[6:0];
 
@@ -39,21 +37,14 @@ module hazard_detect (
         (id_opcode == 7'b0100011) || // Store
         (id_opcode == 7'b1100011); // Branch
 
-    wire hazard_ex;
-    wire hazard_mem;
+    assign ex_is_load = (i_ex_inst[6:0] == 7'b0000011); // Load
 
     assign id_rs1 = i_id_inst[19:15];
     assign id_rs2 = i_id_inst[24:20];
-
     assign ex_rd = i_ex_inst[11:7];
-    assign mem_rd = i_mem_inst[11:7];
 
-    
-    assign hazard_ex = i_ex_rf_wen && (ex_rd != 5'd0) && ((id_uses_rs1 && (id_rs1 == ex_rd)) || (id_uses_rs2 && (id_rs2 == ex_rd)));
-    assign hazard_mem = i_mem_rf_wen && (mem_rd != 5'd0) && ((id_uses_rs1 && (id_rs1 == mem_rd)) || (id_uses_rs2 && (id_rs2 == mem_rd)));
-
-    assign o_hazard = hazard_ex || hazard_mem;
-
+    assign o_load_use_stall = i_id_valid && i_ex_valid && ex_is_load && 
+        (ex_rd != 5'd0) && ((id_uses_rs1 && (id_rs1 == ex_rd)) || (id_uses_rs2 && (id_rs2 == ex_rd)));
 endmodule
 
 `default_nettype wire

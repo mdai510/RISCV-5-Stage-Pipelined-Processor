@@ -188,6 +188,7 @@ module hart #(
         //ex control module
         wire [1:0] pc_sel;
         wire ex_trap;
+        wire ex_flush;
 
         //alu
         wire alu_eq;
@@ -197,6 +198,12 @@ module hart #(
         //alu op
         reg [31:0] alu_op1;
         reg [31:0] alu_op2;
+
+        //forwarding
+        wire [1:0] rs1_forward_sel;
+        wire [1:0] rs2_forward_sel;
+        reg [31:0] rs1_input;
+        reg [31:0] rs2_input;
 
         //pc + imm (branch/jal)
         wire [31:0] ex_pc_plus_imm;
@@ -229,6 +236,9 @@ module hart #(
         //data load extend
         wire [31:0] mem_ldata;
 
+        //forwarding data from MEM stage
+        reg [31:0] mem_forward_data;
+
         //mem/wb reg
         wire wb_valid;
         wire [31:0] wb_pc;
@@ -255,13 +265,7 @@ module hart #(
         reg [31:0] wb_rd_wdata;
 
     //HAZARD:
-        wire raw_hazard;
-        wire data_stall;
-
-        wire id_control;
-        wire ex_control_pending;
-        wire control_wait;
-        wire ex_redirect;
+        wire load_use_stall;
         wire pc_stall;
 
     ////////////////////////////////////////////////module instantiation///////////////////////////////////////////////
@@ -273,8 +277,8 @@ module hart #(
 
         reg_if_id iRegIFID(
             .i_clk(i_clk), .i_rst(i_rst),
-            .if_valid(if_valid), .if_pc(pc), .if_inst(instr), .i_stall(data_stall), .i_clear_valid(control_wait),
-            .id_valid(id_valid), .id_pc(id_pc), .id_inst(id_instr)
+            .if_valid(if_valid), .if_pc(pc), .if_inst(instr), .i_stall(load_use_stall), 
+            .id_valid(id_valid), .id_pc(id_pc), .id_inst(id_instr), .i_flush(ex_flush)
         );
 
     //ID: 
@@ -299,6 +303,11 @@ module hart #(
             .i_rd_wen(wb_rf_wen && wb_valid && !wb_trap), .i_rd_waddr(wb_instr[11:7]), .i_rd_wdata(wb_rd_wdata)
         );      //rf write from WB stage
 
+        hazard_detect iHazard(
+            .i_id_inst(id_instr), .i_id_valid(id_valid), .i_ex_inst(ex_instr), .i_ex_valid(ex_valid),
+            .o_load_use_stall(load_use_stall)
+        );
+
         reg_id_ex iRegIDEX(
             .i_clk(i_clk), .i_rst(i_rst),
             .id_valid(id_valid), .id_pc(id_pc), .id_inst(id_instr),
@@ -309,7 +318,7 @@ module hart #(
             .id_dmem_ren(id_dmem_ren), .id_dmem_wen(id_dmem_wen),
             .id_rf_wen(id_rf_wen), .id_rd_wsel(id_rd_wsel),
             .id_rs1_rdata(id_rf_rs1), .id_rs2_rdata(id_rf_rs2),
-            .i_stall(data_stall),
+            .i_stall(load_use_stall), .i_flush(ex_flush),
             .id_halt(id_halt), .id_illegal(id_illegal),
             .ex_valid(ex_valid), .ex_pc(ex_pc), .ex_inst(ex_instr),
             .ex_op1_sel(ex_op1_sel), .ex_op2_sel(ex_op2_sel),
@@ -328,7 +337,7 @@ module hart #(
             .i_dmem_ren(ex_dmem_ren), .i_dmem_wen(ex_dmem_wen),
             .i_funct3(ex_instr[14:12]), .i_slt(alu_slt), .i_eq(alu_eq),
             .i_alu_res(ex_alu_result[1:0]), .i_branch(ex_branch), .i_jal(ex_jal), .i_jalr(ex_jalr),
-            .o_pc_sel(pc_sel), .o_trap(ex_trap)
+            .o_pc_sel(pc_sel), .o_trap(ex_trap), .o_flush(ex_flush)
         );
 
         alu iALU(
@@ -339,7 +348,7 @@ module hart #(
         reg_ex_mem iRegEXMEM(
             .i_clk(i_clk), .i_rst(i_rst),
             .ex_valid(ex_valid), .ex_pc(ex_pc), .ex_next_pc(ex_next_pc), .ex_inst(ex_instr),
-            .ex_alu_result(ex_alu_result), .ex_rs1_rdata(ex_rs1_rdata), .ex_rs2_rdata(ex_rs2_rdata),
+            .ex_alu_result(ex_alu_result), .ex_rs1_rdata(rs1_input), .ex_rs2_rdata(rs2_input),
             .ex_dmem_ren(ex_dmem_ren), .ex_dmem_wen(ex_dmem_wen),
             .ex_rf_wen(ex_rf_wen), .ex_rd_wsel(ex_rd_wsel),
             .ex_halt(ex_halt), .ex_trap(ex_trap),
@@ -365,6 +374,15 @@ module hart #(
             .i_funct3(mem_instr[14:12]), .o_ldata(mem_ldata)
         );
 
+        forwarding iForwarding(
+            .i_ex_inst(ex_instr), .i_ex_valid(ex_valid),
+            .i_mem_inst(mem_instr), .i_mem_valid(mem_valid), .i_mem_dmem_ren(mem_dmem_ren), 
+            .i_mem_rf_wen(mem_rf_wen), .i_mem_trap(mem_trap),
+            .i_wb_inst(wb_instr), .i_wb_valid(wb_valid), .i_wb_rf_wen(wb_rf_wen), .i_wb_trap(wb_trap),
+            .o_rs1_forward_sel(rs1_forward_sel),
+            .o_rs2_forward_sel(rs2_forward_sel)
+        );
+
         reg_mem_wb iRegMEMWB(
             .i_clk(i_clk), .i_rst(i_rst),
             .mem_valid(mem_valid), .mem_pc(mem_pc), .mem_next_pc(mem_next_pc), .mem_inst(mem_instr),
@@ -382,14 +400,6 @@ module hart #(
             .wb_dmem_rdata(wb_dmem_rdata), .wb_dmem_wdata(wb_dmem_wdata),
             .wb_trap(wb_trap), .wb_halt(wb_halt)
         );
-    
-    //HAZARD:
-        hazard_detect iHazard(
-            .i_id_inst(id_instr),
-            .i_ex_rf_wen(ex_valid && ex_rf_wen), .i_ex_inst(ex_instr),
-            .i_mem_rf_wen(mem_valid && mem_rf_wen), .i_mem_inst(mem_instr),
-            .o_hazard(raw_hazard)
-        );
 
     ///////////////////////////////////////////////wiring//////////////////////////////////////
         always @(*) begin
@@ -400,17 +410,6 @@ module hart #(
                 2'b10 : pc_target = {ex_alu_result[31:1], 1'b0};
                 default : pc_target = pc_plus_4;
             endcase
-            
-            //op1 select
-            case (ex_op1_sel)
-                2'b00 : alu_op1 = ex_rs1_rdata;
-                2'b01 : alu_op1 = ex_pc;
-                2'b10 : alu_op1 = 32'd0;
-                default : alu_op1 = ex_rs1_rdata;
-            endcase
-
-            //op2 select
-            alu_op2 = (ex_op2_sel) ? ex_imm : ex_rs2_rdata;
 
             //wb rd_wdata
             case (wb_rd_wsel)
@@ -419,16 +418,45 @@ module hart #(
                 2'b10 : wb_rd_wdata = wb_pc + 32'd4;
                 default : wb_rd_wdata = 32'bx;
             endcase
+
+            //mem forwarding data
+            case (mem_rd_wsel[1])
+                1'b0 : mem_forward_data = mem_alu_result;
+                1'b1: mem_forward_data = mem_pc + 32'd4;
+                default: mem_forward_data = 32'bx;
+            endcase
+
+            //op1 forwarding select
+            case (rs1_forward_sel)
+                2'b00 : rs1_input = ex_rs1_rdata;
+                2'b01 : rs1_input = mem_forward_data;
+                2'b10 : rs1_input = wb_rd_wdata;
+                default : rs1_input = ex_rs1_rdata;
+            endcase
+
+            //op2 forwarding select
+            case (rs2_forward_sel)
+                2'b00 : rs2_input = ex_rs2_rdata;
+                2'b01 : rs2_input = mem_forward_data;
+                2'b10 : rs2_input = wb_rd_wdata;
+                default : rs2_input = ex_rs2_rdata;
+            endcase
+            
+            //op1 select
+            case (ex_op1_sel)
+                2'b00 : alu_op1 = rs1_input;
+                2'b01 : alu_op1 = ex_pc;
+                2'b10 : alu_op1 = 32'd0;
+                default : alu_op1 = ex_rs1_rdata;
+            endcase
+
+            //op2 select
+            alu_op2 = (ex_op2_sel) ? ex_imm : rs2_input;
         end
 
         assign if_valid = 1'b1; 
         //hazard
-        assign data_stall = id_valid && raw_hazard;                         //keep instruction in ID stage if there is a raw hazard
-        assign id_control = id_valid && (id_branch || id_jal || id_jalr);   //if the instruction in ID stage is a control instruction
-        assign ex_control_pending = ex_valid && (ex_branch || ex_jal || ex_jalr);
-        assign control_wait = id_control || ex_control_pending;     //prevent younger instructions from proceeding to ID while a control instruction is pending
-        assign ex_redirect = pc_sel == 2'b01 || pc_sel == 2'b10;    //allow pc to be redirected for taken branch or jump instructions
-        assign pc_stall = (data_stall || control_wait) && !ex_redirect;   //stall PC if there is a data hazard or control instruction is pending and no redirect is happening
+        assign pc_stall = load_use_stall && !ex_flush; //stall PC if there is a load-use hazard and no flush is happening
 
         //pc mux
         assign pc_plus_4 = pc + 32'd4;
