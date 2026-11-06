@@ -19,3 +19,4 @@ Features:
 Schematic (click to zoom in):  
 <img width="4828" height="1990" alt="image" src="https://github.com/user-attachments/assets/d594166a-6bf4-4787-b360-ce9a5b857157" /> 
 
+Based on/improved from this single cycle processor: https://github.com/mdai510/RISCV-Single-Cycle-Processor 
